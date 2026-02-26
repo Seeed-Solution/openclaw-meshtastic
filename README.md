@@ -4,6 +4,16 @@ OpenClaw channel plugin for [Meshtastic](https://meshtastic.org/) LoRa mesh netw
 
 Lets your OpenClaw gateway send and receive messages over Meshtastic devices — via USB serial, HTTP (WiFi), or MQTT broker.
 
+<p align="center">
+  <img src="media/hardware.jpg" width="400" alt="Meshtastic LoRa hardware with Seeed WM1302 module" />
+</p>
+
+## Demo
+
+https://github.com/user-attachments/assets/demo.mp4
+
+> The video above shows OpenClaw communicating over a Meshtastic LoRa mesh network. If it doesn't load, see [media/demo.mp4](media/demo.mp4).
+
 ## Features
 
 - **Three transport modes**
@@ -49,6 +59,10 @@ openclaw setup
 ```
 
 The wizard walks you through transport selection, connection details, region, access policy, and channel config.
+
+<p align="center">
+  <img src="media/setup-screenshot.png" width="600" alt="OpenClaw setup wizard with Meshtastic channel configured" />
+</p>
 
 ### Manual configuration
 
