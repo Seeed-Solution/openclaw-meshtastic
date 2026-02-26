@@ -1,8 +1,20 @@
 {
-  "name": "@openclaw/meshtastic",
-  "version": "2026.2.25",
-  "description": "OpenClaw Meshtastic channel plugin",
+  "name": "openclaw-meshtastic",
+  "version": "0.1.0",
+  "description": "OpenClaw Meshtastic LoRa mesh channel plugin",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/suharvest/openclaw-meshtastic"
+  },
+  "keywords": [
+    "openclaw",
+    "meshtastic",
+    "lora",
+    "mesh",
+    "iot"
+  ],
   "dependencies": {
     "@meshtastic/core": "^2.6.7",
     "@meshtastic/transport-http": "^0.2.5",
