@@ -1,5 +1,5 @@
 {
-  "id": "meshtastic",
+  "id": "openclaw-meshtastic",
   "channels": ["meshtastic"],
   "configSchema": {
     "type": "object",
