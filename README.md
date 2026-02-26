@@ -39,13 +39,13 @@ https://github.com/user-attachments/assets/demo.mp4
 ## Install
 
 ```bash
-openclaw plugins install @seeed-studio/openclaw-meshtastic
+openclaw plugins install @seeed-studio/meshtastic
 ```
 
 Or install from a local directory during development:
 
 ```bash
-git clone https://github.com/suharvest/openclaw-meshtastic.git
+git clone https://github.com/Seeed-Solution/openclaw-meshtastic.git
 openclaw plugins install -l ./openclaw-meshtastic
 ```
 
