@@ -2,6 +2,25 @@ import { MeshDevice } from "@meshtastic/core";
 import { nodeNumToHex } from "./normalize.js";
 import type { MeshtasticRegion } from "./types.js";
 
+/**
+ * Thrown when setOwner() was called to update the device name.
+ * The device will reboot to persist the change; the caller should
+ * reconnect after a delay (~30 s).
+ */
+export class SetOwnerRebootError extends Error {
+  constructor(
+    public readonly newName: string,
+    public readonly previousName: string | undefined,
+  ) {
+    super(
+      `Device rebooting to apply name "${newName}"` +
+        (previousName ? ` (was "${previousName}")` : "") +
+        `. Auto-reconnect expected.`,
+    );
+    this.name = "SetOwnerRebootError";
+  }
+}
+
 export type MeshtasticTextEvent = {
   senderNodeNum: number;
   senderNodeId: string;
@@ -93,6 +112,22 @@ export async function connectMeshtasticClient(
 
   const device = new MeshDevice(transport);
 
+  // Expose serial port events for diagnostics — helps pinpoint why USB
+  // connections drop (power management, cable, firmware, etc.).
+  if (options.transport === "serial") {
+    const port = (transport as unknown as { port?: { on?: (...a: unknown[]) => void } }).port;
+    if (port?.on) {
+      port.on("error", (err: unknown) => {
+        options.onError?.(
+          err instanceof Error ? err : new Error(`serial port error: ${err}`),
+        );
+      });
+      port.on("close", () => {
+        options.onStatus?.("serial port closed by OS / device");
+      });
+    }
+  }
+
   // Node info cache for name resolution.
   const nodeNames = new Map<number, string>();
   const channelNames = new Map<number, string>();
@@ -106,10 +141,11 @@ export async function connectMeshtasticClient(
     }
   });
 
+  // NodeInfo is dispatched directly (not wrapped in { data: … }) during config.
   device.events.onNodeInfoPacket.subscribe(
-    (packet: { data?: { num?: number; user?: { longName?: string } } }) => {
-      if (packet.data?.user?.longName && packet.data.num) {
-        nodeNames.set(packet.data.num, packet.data.user.longName);
+    (packet: { num?: number; user?: { longName?: string } }) => {
+      if (packet.user?.longName && packet.num) {
+        nodeNames.set(packet.num, packet.user.longName);
       }
     },
   );
@@ -132,7 +168,16 @@ export async function connectMeshtasticClient(
   );
 
   device.events.onDeviceStatus.subscribe((status: number) => {
-    options.onStatus?.(`status=${status}`);
+    const label: Record<number, string> = {
+      1: "Restarting",
+      2: "Disconnected",
+      3: "Connecting",
+      4: "Reconnecting",
+      5: "Connected",
+      6: "Configuring",
+      7: "Configured",
+    };
+    options.onStatus?.(`status=${status} (${label[status] ?? "unknown"})`);
   });
 
   device.events.onMessagePacket.subscribe(
@@ -241,17 +286,42 @@ export async function connectMeshtasticClient(
     throw err;
   }
 
+  // Serial connections require periodic heartbeat pings to stay alive.
+  // Without this the device (or macOS USB stack) drops the connection after
+  // ~30 s of inactivity once configuration is complete.
+  if (options.transport === "serial") {
+    device.setHeartbeatInterval(15_000);
+  }
+
   // LoRa region: rely on NVS-persisted config set via `meshtastic --set lora.region`.
   // Sending a partial setConfig (region-only) zeroes out tx_enabled, tx_power, etc.
   // in the protobuf message, effectively disabling TX.  So we skip setConfig here.
 
-  // Set device display name if configured.  Fire-and-forget for the same reason.
-  if (options.nodeName?.trim()) {
-    const longName = options.nodeName.trim();
-    const shortName = longName.slice(0, 4);
-    device
-      .setOwner({ longName, shortName } as Parameters<typeof device.setOwner>[0])
-      .catch(() => {});
+  // Device display name — only call setOwner() when the configured name
+  // differs from what the device already reports.  setOwner() sends an admin
+  // packet that writes to NVS flash and reboots the device (~20-30 s later).
+  // By gating on a name mismatch we ensure the call happens at most once;
+  // after reboot the name matches and the guard passes, preventing an
+  // infinite reboot loop.
+  if (options.nodeName) {
+    const desiredName = options.nodeName.trim();
+    const currentName = nodeNames.get(myNodeNum);
+
+    if (desiredName && currentName !== desiredName) {
+      const shortName = desiredName.slice(0, 4);
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await device.setOwner({ longName: desiredName, shortName } as any);
+      } catch {
+        // Admin packet may fail on a flaky serial link; fall through and
+        // let the device keep its current name rather than crashing.
+      }
+      // Allow the firmware time to receive and process the admin packet
+      // before we tear down the serial connection.
+      await new Promise((r) => setTimeout(r, 2_000));
+      safeDisconnect();
+      throw new SetOwnerRebootError(desiredName, currentName);
+    }
   }
 
   // Catch unhandled promise rejections originating from @meshtastic/core's

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createLoggerBackedRuntime, type RuntimeEnv } from "openclaw/plugin-sdk";
 import { resolveMeshtasticAccount } from "./accounts.js";
-import { connectMeshtasticClient, type MeshtasticClient } from "./client.js";
+import { connectMeshtasticClient, SetOwnerRebootError, type MeshtasticClient } from "./client.js";
 import { handleMeshtasticInbound } from "./inbound.js";
 import { connectMeshtasticMqtt, type MeshtasticMqttClient } from "./mqtt-client.js";
 import { nodeNumToHex } from "./normalize.js";
@@ -90,82 +90,91 @@ async function monitorDevice(params: {
 
   let client: MeshtasticClient | null = null;
 
-  client = await connectMeshtasticClient({
-    transport,
-    serialPort: account.serialPort,
-    httpAddress: account.httpAddress,
-    httpTls: account.httpTls,
-    region: account.config.region,
-    nodeName: account.config.nodeName,
-    abortSignal: opts.abortSignal,
-    onStatus: (status) => {
-      logger.info(`[${account.accountId}] device ${status}`);
-    },
-    onError: (error) => {
-      logger.error(`[${account.accountId}] error: ${error.message}`);
-    },
-    onText: async (event) => {
-      if (!client) {
-        return;
-      }
+  try {
+    client = await connectMeshtasticClient({
+      transport,
+      serialPort: account.serialPort,
+      httpAddress: account.httpAddress,
+      httpTls: account.httpTls,
+      region: account.config.region,
+      nodeName: account.config.nodeName,
+      abortSignal: opts.abortSignal,
+      onStatus: (status) => {
+        logger.info(`[${account.accountId}] device ${status}`);
+      },
+      onError: (error) => {
+        logger.error(`[${account.accountId}] error: ${error.message}`);
+      },
+      onText: async (event) => {
+        if (!client) {
+          return;
+        }
 
-      const channelName =
-        client.getChannelName(event.channelIndex) ?? `channel-${event.channelIndex}`;
+        const channelName =
+          client.getChannelName(event.channelIndex) ?? `channel-${event.channelIndex}`;
 
-      const message: MeshtasticInboundMessage = {
-        messageId: randomUUID(),
-        senderNodeId: event.senderNodeId,
-        senderName: event.senderName ?? client.getNodeName(event.senderNodeNum),
-        channelIndex: event.channelIndex,
-        channelName,
-        text: event.text,
-        timestamp: event.rxTime,
-        isGroup: !event.isDirect,
-      };
+        const message: MeshtasticInboundMessage = {
+          messageId: randomUUID(),
+          senderNodeId: event.senderNodeId,
+          senderName: event.senderName ?? client.getNodeName(event.senderNodeNum),
+          channelIndex: event.channelIndex,
+          channelName,
+          text: event.text,
+          timestamp: event.rxTime,
+          isGroup: !event.isDirect,
+        };
 
-      core.channel.activity.record({
-        channel: "meshtastic",
-        accountId: account.accountId,
-        direction: "inbound",
-        at: message.timestamp,
-      });
+        core.channel.activity.record({
+          channel: "meshtastic",
+          accountId: account.accountId,
+          direction: "inbound",
+          at: message.timestamp,
+        });
 
-      await handleMeshtasticInbound({
-        message,
-        account,
-        config: cfg,
-        runtime,
-        sendReply: async (target, text) => {
-          if (!client) {
-            return;
-          }
-          // For DM replies, resolve node number from hex ID.
-          // For group replies, broadcast to the same channel.
-          if (message.isGroup) {
-            // Broadcast: fire-and-forget.  The SDK's sendText promise waits
-            // for internal queue confirmation which may time out for broadcasts.
-            // The radio sends the packet regardless, so we don't await.
-            client.sendText(text, undefined, false, message.channelIndex).catch(() => {});
-          } else {
-            // DM: fire-and-forget.  The SDK's sendText awaits ACK from the
-            // target node; if ACK times out the promise rejects, but the radio
-            // has already transmitted the packet.  Awaiting would block
-            // subsequent reply chunks.
-            const { hexToNodeNum } = await import("./normalize.js");
-            const destNum = hexToNodeNum(target);
-            client.sendText(text, destNum, true).catch(() => {});
-          }
-          opts.statusSink?.({ lastOutboundAt: Date.now() });
-          core.channel.activity.record({
-            channel: "meshtastic",
-            accountId: account.accountId,
-            direction: "outbound",
-          });
-        },
-        statusSink: opts.statusSink,
-      });
-    },
-  });
+        await handleMeshtasticInbound({
+          message,
+          account,
+          config: cfg,
+          runtime,
+          sendReply: async (target, text) => {
+            if (!client) {
+              return;
+            }
+            // For DM replies, resolve node number from hex ID.
+            // For group replies, broadcast to the same channel.
+            if (message.isGroup) {
+              // Broadcast: fire-and-forget.  The SDK's sendText promise waits
+              // for internal queue confirmation which may time out for broadcasts.
+              // The radio sends the packet regardless, so we don't await.
+              client.sendText(text, undefined, false, message.channelIndex).catch(() => {});
+            } else {
+              // DM: fire-and-forget.  The SDK's sendText awaits ACK from the
+              // target node; if ACK times out the promise rejects, but the radio
+              // has already transmitted the packet.  Awaiting would block
+              // subsequent reply chunks.
+              const { hexToNodeNum } = await import("./normalize.js");
+              const destNum = hexToNodeNum(target);
+              client.sendText(text, destNum, true).catch(() => {});
+            }
+            opts.statusSink?.({ lastOutboundAt: Date.now() });
+            core.channel.activity.record({
+              channel: "meshtastic",
+              accountId: account.accountId,
+              direction: "outbound",
+            });
+          },
+          statusSink: opts.statusSink,
+        });
+      },
+    });
+  } catch (err) {
+    if (err instanceof SetOwnerRebootError) {
+      logger.info(`[${account.accountId}] ${err.message}`);
+      // Wait for the device to finish rebooting before the framework retries.
+      await new Promise((r) => setTimeout(r, 30_000));
+    }
+    throw err;
+  }
 
   // Register active send function for `openclaw message send`.
   setActiveSerialSend((text, destination, channelIndex) =>
