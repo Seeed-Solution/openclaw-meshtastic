@@ -9,6 +9,28 @@ import { getMeshtasticRuntime } from "./runtime.js";
 import { setActiveSerialSend, setActiveMqttSend } from "./send.js";
 import type { CoreConfig, MeshtasticInboundMessage } from "./types.js";
 
+/** Inject a mention pattern (e.g. "@bard2") into the config so group messages
+ *  containing the pattern are recognized as mentions. */
+function injectMentionPattern(cfg: CoreConfig, name: string | undefined): CoreConfig {
+  if (!name) return cfg;
+  const mentionPattern = `@${name}`;
+  const existingPatterns =
+    (cfg as Record<string, unknown> & { messages?: { groupChat?: { mentionPatterns?: string[] } } })
+      .messages?.groupChat?.mentionPatterns ?? [];
+  if (existingPatterns.includes(mentionPattern)) return cfg;
+  return {
+    ...cfg,
+    messages: {
+      ...(cfg as Record<string, unknown>).messages as Record<string, unknown> | undefined,
+      groupChat: {
+        ...((cfg as Record<string, unknown>).messages as Record<string, unknown> | undefined)
+          ?.groupChat as Record<string, unknown> | undefined,
+        mentionPatterns: [...existingPatterns, mentionPattern],
+      },
+    },
+  };
+}
+
 export type MeshtasticMonitorOptions = {
   accountId?: string;
   config?: CoreConfig;
@@ -48,33 +70,14 @@ export async function monitorMeshtasticProvider(
 
   const transport = account.transport;
 
-  // Auto-inject nodeName into mentionPatterns so "@NodeName" triggers replies.
-  // buildMentionRegexes reads from cfg.messages.groupChat.mentionPatterns, so
-  // we merge nodeName there (not in channel-specific config).
-  const nodeName = account.config.nodeName?.trim();
-  const mentionPattern = nodeName ? `@${nodeName}` : undefined;
-  const existingPatterns =
-    (cfg as Record<string, unknown> & { messages?: { groupChat?: { mentionPatterns?: string[] } } })
-      .messages?.groupChat?.mentionPatterns ?? [];
-  const effectiveCfg =
-    mentionPattern && !existingPatterns.includes(mentionPattern)
-      ? {
-          ...cfg,
-          messages: {
-            ...(cfg as Record<string, unknown>).messages as Record<string, unknown> | undefined,
-            groupChat: {
-              ...((cfg as Record<string, unknown>).messages as Record<string, unknown> | undefined)
-                ?.groupChat as Record<string, unknown> | undefined,
-              mentionPatterns: [...existingPatterns, mentionPattern],
-            },
-          },
-        }
-      : cfg;
-
   if (transport === "mqtt") {
+    // MQTT: use config nodeName for mention pattern (no device to read from).
+    const effectiveCfg = injectMentionPattern(cfg, account.config.nodeName?.trim());
     return monitorMqtt({ account, cfg: effectiveCfg, runtime, logger, opts });
   }
-  return monitorDevice({ account, cfg: effectiveCfg, runtime, logger, opts, transport });
+  // Serial/HTTP: mention pattern is injected after connection so the device's
+  // actual name can be used as fallback when nodeName is not configured.
+  return monitorDevice({ account, cfg, runtime, logger, opts, transport });
 }
 
 async function monitorDevice(params: {
@@ -85,7 +88,8 @@ async function monitorDevice(params: {
   opts: MeshtasticMonitorOptions;
   transport: "serial" | "http";
 }): Promise<{ stop: () => void }> {
-  const { account, cfg, runtime, logger, opts, transport } = params;
+  const { account, runtime, logger, opts, transport } = params;
+  let cfg = params.cfg;
   const core = getMeshtasticRuntime();
 
   let client: MeshtasticClient | null = null;
@@ -174,6 +178,14 @@ async function monitorDevice(params: {
       await new Promise((r) => setTimeout(r, 30_000));
     }
     throw err;
+  }
+
+  // Determine the effective device name for @mention matching.
+  // If nodeName is configured, use it.  Otherwise read the device's actual name.
+  const effectiveName = account.config.nodeName?.trim() || client.getMyNodeName();
+  cfg = injectMentionPattern(cfg, effectiveName);
+  if (effectiveName) {
+    logger.info(`[${account.accountId}] mention trigger: @${effectiveName}`);
   }
 
   // Register active send function for `openclaw message send`.

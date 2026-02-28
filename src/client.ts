@@ -56,6 +56,7 @@ export type MeshtasticClient = {
     channelIndex?: number,
   ) => Promise<number>;
   getNodeName: (nodeNum: number) => string | undefined;
+  getMyNodeName: () => string | undefined;
   getChannelName: (index: number) => string | undefined;
   close: () => void;
 };
@@ -353,6 +354,7 @@ export async function connectMeshtasticClient(
     sendText: (text, destination, wantAck = true, channelIndex) =>
       device.sendText(text, destination, wantAck, channelIndex),
     getNodeName: (nodeNum) => nodeNames.get(nodeNum),
+    getMyNodeName: () => nodeNames.get(myNodeNum),
     getChannelName: (index) => channelNames.get(index) || (index === 0 ? "LongFast" : undefined),
     close: () => {
       safeDisconnect();

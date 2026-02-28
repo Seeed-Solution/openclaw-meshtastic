@@ -24,6 +24,30 @@ import type {
 
 const channel = "meshtastic" as const;
 
+const REGION_OPTIONS: { value: string; label: string }[] = [
+  { value: "US", label: "US (902-928 MHz)" },
+  { value: "EU_433", label: "EU_433 (433 MHz)" },
+  { value: "EU_868", label: "EU_868 (869 MHz)" },
+  { value: "CN", label: "CN (470-510 MHz)" },
+  { value: "JP", label: "JP (920 MHz)" },
+  { value: "ANZ", label: "ANZ (915-928 MHz)" },
+  { value: "KR", label: "KR (920-923 MHz)" },
+  { value: "TW", label: "TW (920-925 MHz)" },
+  { value: "RU", label: "RU (868 MHz)" },
+  { value: "IN", label: "IN (865-867 MHz)" },
+  { value: "TH", label: "TH (920-925 MHz)" },
+  { value: "LORA_24", label: "LORA_24 (2.4 GHz)" },
+];
+
+function regionToMqttTopic(region: string): string {
+  return `msh/${region}/2/json/#`;
+}
+
+function parseRegionFromTopic(topic: string): string | undefined {
+  const match = topic.match(/^msh\/([^/]+)\//);
+  return match?.[1];
+}
+
 function parseListInput(raw: string): string[] {
   return raw
     .split(/[\n,;]+/g)
@@ -295,10 +319,20 @@ export const meshtasticOnboardingAdapter: ChannelOnboardingAdapter = {
         }),
       ).trim();
 
+      // Region selection — generates the default MQTT topic.
+      const existingTopic = resolved.config.mqtt?.topic || "msh/US/2/json/#";
+      const currentMqttRegion = parseRegionFromTopic(existingTopic) ?? "US";
+      const mqttRegionChoice = await prompter.select({
+        message: "LoRa region (determines which mesh traffic to receive)",
+        options: REGION_OPTIONS,
+        initialValue: currentMqttRegion,
+      });
+      const mqttRegion = String(mqttRegionChoice);
+
       const topic = String(
         await prompter.text({
           message: "MQTT subscribe topic",
-          initialValue: resolved.config.mqtt?.topic || "msh/US/2/json/#",
+          initialValue: regionToMqttTopic(mqttRegion),
           validate: (value) => (String(value ?? "").trim() ? undefined : "Required"),
         }),
       ).trim();
@@ -328,18 +362,7 @@ export const meshtasticOnboardingAdapter: ChannelOnboardingAdapter = {
         message: "LoRa region",
         options: [
           { value: "UNSET", label: "UNSET (keep device default)" },
-          { value: "US", label: "US (902-928 MHz)" },
-          { value: "EU_433", label: "EU_433 (433 MHz)" },
-          { value: "EU_868", label: "EU_868 (869 MHz)" },
-          { value: "CN", label: "CN (470-510 MHz)" },
-          { value: "JP", label: "JP (920 MHz)" },
-          { value: "ANZ", label: "ANZ (915-928 MHz)" },
-          { value: "KR", label: "KR (920-923 MHz)" },
-          { value: "TW", label: "TW (920-925 MHz)" },
-          { value: "RU", label: "RU (868 MHz)" },
-          { value: "IN", label: "IN (865-867 MHz)" },
-          { value: "TH", label: "TH (920-925 MHz)" },
-          { value: "LORA_24", label: "LORA_24 (2.4 GHz)" },
+          ...REGION_OPTIONS,
         ],
         initialValue: resolved.config.region ?? "UNSET",
       });
@@ -352,11 +375,19 @@ export const meshtasticOnboardingAdapter: ChannelOnboardingAdapter = {
     // Device display name — also used as a mention pattern so users can
     // @NodeName the bot in group channels.
     const currentNodeName = resolveMeshtasticAccount({ cfg: next, accountId }).config.nodeName;
+    const isMqtt = transport === "mqtt";
     const nodeNameInput = String(
       await prompter.text({
-        message: "Device display name (also used as @mention trigger)",
-        placeholder: "e.g. OpenClaw",
+        message: isMqtt
+          ? "Device display name (required for MQTT — used as @mention trigger)"
+          : "Device display name (leave empty to auto-detect from device)",
+        placeholder: isMqtt
+          ? "e.g. OpenClaw"
+          : "e.g. OpenClaw (empty = use device's current name)",
         initialValue: currentNodeName || undefined,
+        validate: isMqtt
+          ? (value) => (String(value ?? "").trim() ? undefined : "Required for MQTT (no device to auto-detect from)")
+          : undefined,
       }),
     ).trim();
     if (nodeNameInput) {
