@@ -1,22 +1,17 @@
 name: Translate README
 
 on:
-  push:
-    branches:
-      - "**"
-    paths:
-      - "README.md"
-      - ".github/scripts/translate_readme.py"
-      - ".github/translate/**"
-      - ".github/workflows/readme-translate.yml"
+  issue_comment:
+    types: [created]
   workflow_dispatch:
 
 concurrency:
-  group: translate-readme-${{ github.ref }}
+  group: translate-readme-${{ github.event.issue.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: write
+  pull-requests: write
 
 env:
   LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
@@ -25,8 +20,118 @@ env:
   LLM_TIMEOUT: ${{ vars.LLM_TIMEOUT || '300' }}
 
 jobs:
-  translate:
-    if: ${{ github.actor != 'github-actions[bot]' }}
+  # Job 1: PR 中通过 /translate 评论手动触发
+  translate-pr:
+    if: >-
+      github.event_name == 'issue_comment'
+      && github.event.issue.pull_request
+      && contains(github.event.comment.body, '/translate')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add reaction to comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          gh api "repos/${{ github.repository }}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content='eyes' --silent
+
+      - name: Get PR head ref
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          PR_DATA=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}")
+          echo "ref=$(echo "$PR_DATA" | jq -r .head.ref)" >> "$GITHUB_OUTPUT"
+          echo "sha=$(echo "$PR_DATA" | jq -r .head.sha)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout PR branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ steps.pr.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Check if README.md changed
+        id: check
+        run: |
+          if git diff --name-only origin/main...HEAD | grep -q '^README.md$'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip if README unchanged
+        if: steps.check.outputs.changed != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${{ github.repository }}" \
+            --body "No changes to README.md detected in this PR. Skipping translation."
+
+      - name: Set up Python
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - name: Translate to all languages
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          LANGS=$(python3 -c "import json; print(' '.join(l['code'] for l in json.load(open('.github/translate/languages.json'))))")
+          FAILED=""
+          for lang in $LANGS; do
+            echo "::group::Translating to ${lang}"
+            if python .github/scripts/translate_readme.py --lang "${lang}"; then
+              echo "✓ ${lang} succeeded"
+            else
+              echo "✗ ${lang} failed"
+              FAILED="${FAILED} ${lang}"
+            fi
+            echo "::endgroup::"
+          done
+          if [ -n "$FAILED" ]; then
+            echo "::warning::Failed languages:${FAILED}"
+          fi
+
+      - name: Commit and push translated READMEs
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          TARGETS=$(python3 -c "import json; print(' '.join(l['target'] for l in json.load(open('.github/translate/languages.json'))))")
+          for f in $TARGETS; do
+            [ -f "$f" ] && git add "$f"
+          done
+          if git diff --cached --quiet; then
+            echo "No translation changes detected."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs: auto-translate README files from README.md"
+          git push
+
+      - name: Report result
+        if: always() && steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            gh pr comment "${PR_NUMBER}" \
+              --repo "${{ github.repository }}" \
+              --body "Translation complete. Translated READMEs have been committed to this PR branch."
+          else
+            gh pr comment "${PR_NUMBER}" \
+              --repo "${{ github.repository }}" \
+              --body "Translation failed. Please check the [workflow logs](${RUN_URL})."
+          fi
+
+  # Job 2: workflow_dispatch 手动触发（在 main 上直接翻译）
+  translate-manual:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
