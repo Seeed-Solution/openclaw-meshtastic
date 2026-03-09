@@ -1,46 +1,66 @@
-# MeshClaw: OpenClaw Meshtastic Channel Plugin
+# MeshClaw: OpenClaw Meshtastic 通道插件
 
 <p align="center">
-  <img src="media/GoMeshClaw.png" width="700" alt="Meshtastic LoRa hardware" />
+  <a href="https://www.npmjs.com/package/@seeed-studio/meshtastic">
+    <img alt="npm 版本" src="https://img.shields.io/npm/v/@seeed-studio/meshtastic.svg" />
+  </a>
+  <a href="https://www.npmjs.com/package/@seeed-studio/meshtastic">
+    <img alt="license" src="https://img.shields.io/npm/l/@seeed-studio/meshtastic.svg" />
+  </a>
 </p>
 
-[![npm version](https://img.shields.io/npm/v/@seeed-studio/meshtastic.svg)](https://www.npmjs.com/package/@seeed-studio/meshtastic)
-[![license](https://img.shields.io/npm/l/@seeed-studio/meshtastic.svg)](https://www.npmjs.com/package/@seeed-studio/meshtastic)
+<p align="center">
+  <a href="README.md"><b>英文</b></a> | <a href="README.zh-CN.md">中文</a>
+</p>
 
-**[English](README.md)** | [中文](README.zh-CN.md)
+<p align="center">
+  <img src="media/GoMeshClaw.png" width="700" alt="Meshtastic LoRa 硬件" />
+</p>
 
-[OpenClaw](https://github.com/openclaw/openclaw) 的 [Meshtastic](https://meshtastic.org/) LoRa 网状网络频道插件。通过 USB 串口、HTTP 或 MQTT 将 AI 网关连接到 mesh 网络，无需云服务。
+MeshClaw 是一个 OpenClaw 通道插件，它通过串行（USB）、HTTP（WiFi）或 MQTT 将您的 AI 网关连接到 Meshtastic LoRa 网状网络。
 
 > [!IMPORTANT]
-> 注意：人手有限，中文文档可能略有滞后，请优先查看英文文档。
->
-> 这是 [OpenClaw](https://github.com/openclaw/openclaw) AI 网关的**频道插件**，不是独立应用程序。你需要一个运行中的 OpenClaw 实例（Node.js 22+）才能使用。
+> 此存储库是一个 **OpenClaw 通道插件**，不是一个独立的应用程序。
+> 您需要一个正在运行的 [OpenClaw](https://github.com/openclaw/openclaw) 网关（Node.js 22+）才能使用它。
 
-[文档][docs] · [硬件指南](#推荐硬件) · [报告问题][issues] · [功能请求][issues]
+[Meshtastic 文档][docs] · [报告错误][issues] · [请求功能][issues]
 
 ## 目录
 
-- [快速开始](#快速开始)
-- [工作原理](#工作原理)
-- [推荐硬件](#推荐硬件)
-- [演示](#演示)
-- [功能特性](#功能特性)
-- [设置向导](#设置向导)
-- [配置](#配置)
-- [故障排查](#故障排查)
-- [开发](#开发)
-- [贡献](#贡献)
+- [先决条件](#prerequisites)
+- [快速入门](#quick-start)
+- [工作原理](#how-it-works)
+- [关键特性](#key-features)
+- [传输模式](#transport-modes)
+- [访问控制](#access-control)
+- [配置](#configuration)
+- [演示](#demo)
+- [推荐硬件](#recommended-hardware)
+- [故障排除](#troubleshooting)
+- [限制](#limitations)
+- [开发](#development)
+- [贡献](#contributing)
+- [许可证](#license)
 
-## 快速开始
+## 先决条件
+
+- OpenClaw 网关已安装并运行
+- Node.js 22+
+- 一种 Meshtastic 连接方法：
+  - 通过 USB 的串行设备，或
+  - 本地网络上的启用 HTTP 的 Meshtastic 设备，或
+  - MQTT 代理访问（无需本地硬件）
+
+## 快速入门
 
 ```bash
-# 1. 安装插件
+# 1) 从 npm 安装插件
 openclaw plugins install @seeed-studio/meshtastic
 
-# 2. 交互式设置 — 引导完成传输方式、频率区域、访问策略等配置
+# 2) 运行引导设置
 openclaw onboard
 
-# 3. 验证
+# 3) 验证通道状态
 openclaw channels status --probe
 ```
 
@@ -52,137 +72,69 @@ openclaw channels status --probe
 
 ```mermaid
 flowchart LR
-    subgraph mesh ["📻 LoRa Mesh 网络"]
+    subgraph mesh ["LoRa 网状网络"]
         N["Meshtastic 节点"]
     end
-    subgraph gw ["⚙️ OpenClaw 网关"]
-        P["Meshtastic 插件"]
-        AI["AI Agent"]
+    subgraph gw ["OpenClaw 网关"]
+        P["MeshClaw 插件"]
+        AI["AI 代理"]
     end
-    N -- "Serial (USB)" --> P
+    N -- "串行 (USB)" --> P
     N -- "HTTP (WiFi)" --> P
-    N -. "MQTT (Broker)" .-> P
+    N -. "MQTT (代理)" .-> P
     P <--> AI
 ```
 
-本插件在 Meshtastic LoRa 设备和 OpenClaw AI Agent 之间架起桥梁，支持三种传输模式：
+入站消息在到达 AI 代理之前会通过 DM/组策略检查。
+出站回复会被转换为纯文本并分块以供无线电传输。
 
-- **Serial** — 通过 USB 直连本地 Meshtastic 设备
-- **HTTP** — 通过 WiFi / 局域网连接设备
-- **MQTT** — 订阅 Meshtastic MQTT broker，无需本地硬件
+## 关键特性
 
-入站消息经过访问控制（私信策略、群组策略、@mention 门控）后到达 AI。出站回复会自动去除 markdown 格式（LoRa 设备无法渲染），并按无线电包大小限制进行分片。
+- **三种传输方式**：串行、HTTP 和 MQTT
+- **DM 策略控制**：`pairing`、`open` 或 `allowlist`
+- **组策略控制**：`disabled`、`open` 或 `allowlist`
+- **提及门控**：仅在提及时在组中回复（可选）
+- **多账户支持**：运行多个独立的 Meshtastic 连接
+- **弹性传输处理**：不稳定链接的重新连接行为
 
-## 推荐硬件
+## 传输模式
 
-<p align="center">
-  <img src="media/XIAOclaw.png" width="760" alt="搭载 Seeed XIAO 模组的 Meshtastic 设备" />
-</p>
-
-| 设备 | 适用场景 | 链接 |
+| 模式 | 适用于 | 必需字段 |
 |---|---|---|
-| XIAO ESP32S3 + Wio-SX1262 套件 | 低成本离网节点 | [购买][hw-xiao] |
-| Wio Tracker L1 Pro | 即插即用网关 | [购买][hw-wio] |
-| SenseCAP Card Tracker T1000-E | 便携追踪器 | [购买][hw-sensecap] |
+| `serial` | 本地 USB 连接的节点 | `transport`、`serialPort` |
+| `http` | 可在本地网络中访问的节点 | `transport`、`httpAddress` |
+| `mqtt` | 无本地硬件，共享代理 | `transport`、`mqtt.*`、`nodeName` |
 
-任何 Meshtastic 兼容设备均可使用。Serial 和 HTTP 直连设备；MQTT 完全不需要本地硬件。
+注意：
+- `serial` 是默认传输方式。
+- `mqtt` 默认值：代理 `mqtt.meshtastic.org`，主题 `msh/US/2/json/#`。
+- 区域设置适用于串行/HTTP；MQTT 从主题中获取区域。
 
-## 演示
+## 访问控制
 
-https://github.com/user-attachments/assets/a3e46e9d-cf5a-4743-9830-f671a1998ca0
+### DM 策略 (`dmPolicy`)
 
-备用链接：[media/demo.mp4](media/demo.mp4)
-
-## 功能特性
-
-- **私信和 mesh 频道** — 支持按频道设置独立规则
-- **访问控制** — 私信策略（`open` / `pairing` / `allowlist`）、群组策略（`open` / `allowlist` / `disabled`）、@mention 门控、按频道白名单
-- **多账户** — 同时运行独立的 serial、HTTP、MQTT 连接
-- **区域感知** — 连接时自动设置设备区域，自动推导 MQTT topic 默认值
-- **自动重连** — 弹性重试处理
-
-## 设置向导
-
-运行 `openclaw onboard` 会启动一个交互式向导，逐步引导你完成配置。以下是每一步的含义和选择建议。
-
-### 1. 传输方式（Transport）
-
-网关如何连接到 Meshtastic mesh 网络：
-
-| 选项 | 说明 | 要求 |
-|---|---|---|
-| **Serial**（USB 串口） | 通过 USB 直连本地设备，自动检测可用端口。 | Meshtastic 设备已通过 USB 连接 |
-| **HTTP**（WiFi） | 通过局域网连接设备。 | 设备 IP 或主机名（如 `meshtastic.local`） |
-| **MQTT**（broker） | 通过 MQTT broker 连接 mesh 网络，无需本地硬件。 | broker 地址、凭据和订阅 topic |
-
-### 2. LoRa 频率区域（Region）
-
-> 仅 Serial 和 HTTP 模式需要。MQTT 模式从订阅 topic 中自动推导区域。
-
-设置设备的无线电频率区域，必须与当地法规和 mesh 网络中其他节点一致。常用选项：
-
-| 区域 | 频率 |
+| 值 | 行为 |
 |---|---|
-| `US` | 902–928 MHz |
-| `EU_868` | 869 MHz |
-| `CN` | 470–510 MHz |
-| `JP` | 920 MHz |
-| `UNSET` | 保持设备默认值 |
+| `pairing`（默认） | 新用户在 DM 聊天前需要批准 |
+| `open` | 任何节点都可以 DM |
+| `allowlist` | 只有 `allowFrom` 中的 ID 可以 DM |
 
-完整列表参见 [Meshtastic 区域文档](https://meshtastic.org/docs/getting-started/initial-config/#lora)。
+### 组策略 (`groupPolicy`)
 
-### 3. 节点名称（Node Name）
-
-设备在 mesh 网络中的显示名称，同时作为群组频道中的 **@mention 触发词** — 其他用户发送 `@OpenClaw` 即可与你的 bot 对话。
-
-- **Serial / HTTP**：可选 — 留空会自动从连接的设备读取名称。
-- **MQTT**：必填 — 没有物理设备可供读取名称。
-
-### 4. 频道访问控制（Channel Access / `groupPolicy`）
-
-控制 bot 是否以及如何响应 **mesh 群组频道**（如 LongFast、Emergency）中的消息：
-
-| 策略 | 行为 |
+| 值 | 行为 |
 |---|---|
-| `disabled`（默认） | 忽略所有群组频道消息。仅处理私信。 |
-| `open` | 在 mesh 上的**所有**频道中响应消息。 |
-| `allowlist` | 仅在**指定频道**中响应。设置时会提示输入频道名称（逗号分隔，如 `LongFast, Emergency`）。使用 `*` 通配符匹配所有频道。 |
+| `disabled`（默认） | 忽略组通道 |
+| `open` | 在所有组通道中回复 |
+| `allowlist` | 仅在配置的通道中回复 |
 
-### 5. 需要 @mention 才回复（Require Mention）
-
-> 仅在频道访问控制不为 `disabled` 时出现。
-
-启用时（默认：**是**），bot 在群组频道中只有被 @mention 时才会回复（如 `@OpenClaw 天气怎么样?`），防止 bot 对频道中的每条消息都回复。
-
-禁用时，bot 会回复允许频道中的**所有**消息。
-
-### 6. 私信访问策略（DM Access Policy / `dmPolicy`）
-
-控制谁可以给 bot 发送**私信（Direct Message）**：
-
-| 策略 | 行为 |
-|---|---|
-| `pairing`（默认） | 新发送者会触发配对请求，审批通过后才能对话。 |
-| `open` | mesh 上的任何人都可以自由私信 bot。 |
-| `allowlist` | 仅 `allowFrom` 列表中的节点可以私信，其他人被忽略。 |
-
-### 7. 私信白名单（DM Allowlist / `allowFrom`）
-
-> 仅在 `dmPolicy` 为 `allowlist` 或向导判断需要时出现。
-
-允许发送私信的 Meshtastic 节点 ID 列表。格式为 `!aabbccdd`（十六进制节点 ID），多个条目用逗号分隔。
-
-### 8. 账户显示名称（Account Display Names）
-
-> 仅在多账户配置时出现。可选。
-
-为你的账户设置人类可读的显示名称。例如，ID 为 `home` 的账户可以显示为「家里基站」。如果跳过，系统直接使用原始 account ID。这是纯展示性的设置，不影响任何功能。
+您还可以为每个通道要求提及（`requireMention`），以便机器人仅在明确标记时回复。
 
 ## 配置
 
-交互式设置（`openclaw onboard`）涵盖以下所有内容。详细步骤说明参见[设置向导](#设置向导)。如需手动编辑，使用 `openclaw config edit`。
+使用 `openclaw onboard` 进行引导设置，或使用 `openclaw config edit` 手动编辑配置。
 
-### Serial（USB 串口）
+### 串行（USB）
 
 ```yaml
 channels:
@@ -202,7 +154,7 @@ channels:
     nodeName: OpenClaw
 ```
 
-### MQTT（broker）
+### MQTT（代理）
 
 ```yaml
 channels:
@@ -233,36 +185,37 @@ channels:
 ```
 
 <details>
-<summary><b>全部选项参考</b></summary>
+<summary><b>配置参考</b></summary>
 
-| 配置项 | 类型 | 默认值 | 说明 |
+| 键 | 类型 | 默认值 | 备注 |
 |---|---|---|---|
-| `transport` | `serial \| http \| mqtt` | `serial` | |
-| `serialPort` | `string` | — | Serial 模式必填 |
-| `httpAddress` | `string` | `meshtastic.local` | HTTP 模式必填 |
-| `httpTls` | `boolean` | `false` | |
-| `mqtt.broker` | `string` | `mqtt.meshtastic.org` | |
-| `mqtt.port` | `number` | `1883` | |
-| `mqtt.username` | `string` | `meshdev` | |
-| `mqtt.password` | `string` | `large4cats` | |
-| `mqtt.topic` | `string` | `msh/US/2/json/#` | 订阅 topic |
-| `mqtt.publishTopic` | `string` | 自动推导 | |
-| `mqtt.tls` | `boolean` | `false` | |
-| `region` | 枚举 | `UNSET` | `US`、`EU_868`、`CN`、`JP`、`ANZ`、`KR`、`TW`、`RU`、`IN`、`NZ_865`、`TH`、`EU_433`、`UA_433`、`UA_868`、`MY_433`、`MY_919`、`SG_923`、`LORA_24`。仅 Serial/HTTP 模式。 |
-| `nodeName` | `string` | 自动检测 | 显示名称及 @mention 触发词。MQTT 模式必填。 |
-| `dmPolicy` | `open \| pairing \| allowlist` | `pairing` | 私信访问策略。详见[私信访问策略](#6-私信访问策略dm-access-policy--dmpolicy)。 |
-| `allowFrom` | `string[]` | — | 私信白名单节点 ID，如 `["!aabbccdd"]` |
-| `groupPolicy` | `open \| allowlist \| disabled` | `disabled` | 群组频道响应策略。详见[频道访问控制](#4-频道访问控制channel-access--grouppolicy)。 |
-| `channels` | `Record<string, object>` | — | 按频道覆盖：`requireMention`、`allowFrom`、`tools` |
+| `transport` | `serial \| http \| mqtt` | `serial` | 基础传输 |
+| `serialPort` | `string` | - | `serial` 所需 |
+| `httpAddress` | `string` | `meshtastic.local` | `http` 所需 |
+| `httpTls` | `boolean` | `false` | HTTP TLS |
+| `mqtt.broker` | `string` | `mqtt.meshtastic.org` | MQTT 代理主机 |
+| `mqtt.port` | `number` | `1883` | MQTT 端口 |
+| `mqtt.username` | `string` | `meshdev` | MQTT 用户名 |
+| `mqtt.password` | `string` | `large4cats` | MQTT 密码 |
+| `mqtt.topic` | `string` | `msh/US/2/json/#` | 订阅主题 |
+| `mqtt.publishTopic` | `string` | derived | 可选覆盖 |
+| `mqtt.tls` | `boolean` | `false` | MQTT TLS |
+| `region` | enum | `UNSET` | 串行/HTTP 仅 |
+| `nodeName` | `string` | auto-detect | MQTT 所需 |
+| `dmPolicy` | `open \| pairing \| allowlist` | `pairing` | DM 访问策略 |
+| `allowFrom` | `string[]` | - | DM 允许列表，例如 `!aabbccdd` |
+| `groupPolicy` | `open \| allowlist \| disabled` | `disabled` | 组通道策略 |
+| `channels` | `Record<string, object>` | - | 每通道覆盖 |
+| `textChunkLimit` | `number` | `200` | 允许范围：`50-500` |
 
 </details>
 
 <details>
 <summary><b>环境变量覆盖</b></summary>
 
-以下环境变量覆盖默认账户的配置（YAML 中的命名账户配置优先）：
+这些变量覆盖默认账户字段：
 
-| 变量 | 等效配置项 |
+| 变量 | 配置键 |
 |---|---|
 | `MESHTASTIC_TRANSPORT` | `transport` |
 | `MESHTASTIC_SERIAL_PORT` | `serialPort` |
@@ -272,17 +225,47 @@ channels:
 
 </details>
 
-## 故障排查
+## 演示
 
-| 症状 | 检查项 |
+<div align="center">
+
+https://github.com/user-attachments/assets/837062d9-a5bb-4e0a-b7cf-298e4bdf2f7c
+
+</div>
+
+备用：[media/demo.mp4](media/demo.mp4)
+
+## 推荐硬件
+
+<p align="center">
+  <img src="media/XIAOclaw.png" width="760" alt="带有 Seeed XIAO 模块的 Meshtastic 设备" />
+</p>
+
+| 设备 | 适用于 | 链接 |
+|---|---|---|
+| XIAO ESP32S3 + Wio-SX1262 套件 | 入门级开发 | [购买][hw-xiao] |
+| Wio Tracker L1 Pro | 便携式现场网关 | [购买][hw-wio] |
+| SenseCAP Card Tracker T1000-E | 紧凑型追踪器 | [购买][hw-sensecap] |
+
+任何 Meshtastic 兼容的设备都可以使用。MQTT 模式可以在没有本地硬件的情况下运行。
+
+## 故障排除
+
+| 症状 | 检查 |
 |---|---|
-| Serial 无法连接 | 设备路径是否正确？主机是否有权限？ |
-| HTTP 无法连接 | `httpAddress` 是否可达？`httpTls` 是否与设备设置匹配？ |
-| MQTT 收不到消息 | `mqtt.topic` 中的区域是否正确？broker 凭据是否有效？ |
-| 私信无回复 | `dmPolicy` 和 `allowFrom` 是否已配置？详见[私信访问策略](#6-私信访问策略dm-access-policy--dmpolicy)。 |
-| 群组频道无回复 | `groupPolicy` 是否已启用？频道是否在白名单中？是否需要 @mention？详见[频道访问控制](#4-频道访问控制channel-access--grouppolicy)。 |
+| 串行无法连接 | `serialPort` 是否正确？主机是否有设备权限？ |
+| HTTP 无法连接 | `httpAddress` 是否可访问？`httpTls` 是否设置正确？ |
+| MQTT 收不到消息 | 主题区域是否正确？代理凭据是否有效？ |
+| 没有 DM 回复 | 检查 `dmPolicy` 和 `allowFrom` |
+| 没有组回复 | 检查 `groupPolicy`、允许列表和提及要求 |
 
-发现 bug？请[提交 issue][issues]，附上传输方式、配置（隐去密钥）以及 `openclaw channels status --probe` 的输出。
+在提交问题时要包括传输模式、编辑后的配置和 `openclaw channels status --probe` 输出。
+
+## 限制
+
+- LoRa 消息带宽受限；回复会被分块（`textChunkLimit`，默认 `200`）。
+- 在发送到无线电设备之前，富 Markdown 会被移除。
+- 网状质量、范围和延迟取决于无线电环境和网络条件。
 
 ## 开发
 
@@ -291,16 +274,22 @@ git clone https://github.com/Seeed-Solution/openclaw-meshtastic.git
 cd openclaw-meshtastic
 npm install
 openclaw plugins install -l ./openclaw-meshtastic
+openclaw channels status --probe
 ```
 
-无构建步骤 — OpenClaw 直接加载 TypeScript 源码。使用 `openclaw channels status --probe` 验证。
+不需要构建步骤。OpenClaw 直接从 `index.ts` 加载 TypeScript 源代码。
 
 ## 贡献
 
-- [提交 issue][issues] 报告 bug 或提出功能请求
-- 欢迎 Pull Request — 请保持与现有 TypeScript 代码风格一致
+- 通过 [GitHub Issues][issues] 提交问题和功能请求
+- 欢迎拉取请求
+- 保持更改与现有的 TypeScript 约定一致
 
-<!-- Reference-style links -->
+## 许可证
+
+MIT
+
+<!-- 参考样式链接 -->
 [docs]: https://meshtastic.org/docs/
 [issues]: https://github.com/Seeed-Solution/openclaw-meshtastic/issues
 [hw-xiao]: https://www.seeedstudio.com/Wio-SX1262-with-XIAO-ESP32S3-p-5982.html
