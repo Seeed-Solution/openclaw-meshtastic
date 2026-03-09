@@ -11,7 +11,7 @@
 
 <!-- LANG_SWITCHER_START -->
 <p align="center">
-  <a href="README.md">English</a> | <a href="README.zh-CN.md">中文</a> | <b>日本語</b>
+  <a href="README.md">English</a> | <a href="README.zh-CN.md">中文</a> | <b>日本語</b> | <a href="README.fr.md">Français</a> | <a href="README.pt.md">Português</a> | <a href="README.es.md">Español</a>
 </p>
 <!-- LANG_SWITCHER_END -->
 
