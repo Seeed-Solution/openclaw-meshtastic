@@ -71,6 +71,7 @@ class LangConfig:
     style_prompt: str
     user_instruction: str
     toc_heading_pattern: str  # regex to match TOC heading in translated output
+    lang_switcher: str  # correct language switcher HTML for this target
 
 
 _LANG_ZH_CN = LangConfig(
@@ -121,6 +122,11 @@ _LANG_ZH_CN = LangConfig(
         "Rules:\n"
         "- Use 你 not 您\n"
         "- Omit unnecessary 的、了、一个、进行 — keep sentences tight\n"
+    ),
+    lang_switcher=(
+        '  <a href="README.md">English</a>'
+        ' | <a href="README.zh-CN.md"><b>中文</b></a>'
+        ' | <a href="README.ja.md">日本語</a>'
     ),
 )
 
@@ -175,6 +181,11 @@ _LANG_JA = LangConfig(
         "- Keep Katakana for established loanwords (e.g. プラグイン, ノード)\n"
         "- Add half-width space between Japanese and alphanumeric characters\n"
     ),
+    lang_switcher=(
+        '  <a href="README.md">English</a>'
+        ' | <a href="README.zh-CN.md">中文</a>'
+        ' | <a href="README.ja.md"><b>日本語</b></a>'
+    ),
 )
 
 LANGUAGES: dict[str, LangConfig] = {
@@ -192,6 +203,23 @@ def _strip_markdown_fence(text: str) -> str:
     if match:
         return match.group(1).strip() + "\n"
     return text
+
+
+def _fix_lang_switcher(translated: str, lang: LangConfig) -> str:
+    """Replace the language switcher line with the correct version for this target."""
+    # Match any <p align="center"> block containing README links
+    pattern = re.compile(
+        r'<p align="center">\s*\n\s*<a href="README(?:\.\w[\w-]*)?'
+        r'\.md">[\s\S]*?</p>',
+        re.IGNORECASE,
+    )
+    replacement = (
+        '<p align="center">\n'
+        + lang.lang_switcher + '\n'
+        + '</p>'
+    )
+    result = pattern.sub(replacement, translated, count=1)
+    return result
 
 
 def _extract_code_blocks(md: str) -> list[str]:
@@ -378,6 +406,9 @@ def main() -> int:
 
     source_markdown = SOURCE.read_text(encoding="utf-8")
     translated = _request_translation(source_markdown, api_key, lang)
+
+    # Post-process: fix language switcher to bold the current language
+    translated = _fix_lang_switcher(translated, lang)
 
     # Validate translation quality
     errors = _validate_translation(source_markdown, translated, lang)
