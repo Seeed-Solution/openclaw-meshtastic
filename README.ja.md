@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="media/GoMeshClaw.png" width="700" alt="Meshtastic LoRa hardware" />
+</p>
+
 # MeshClaw: OpenClaw Meshtastic チャンネルプラグイン
 
 <p align="center">
@@ -15,69 +19,38 @@
 </p>
 <!-- LANG_SWITCHER_END -->
 
-<p align="center">
-  <img src="media/GoMeshClaw.png" width="700" alt="Meshtastic LoRa hardware" />
-</p>
+**MeshClaw** は OpenClaw のチャンネルプラグインです。AI ゲートウェイが Meshtastic を介してメッセージの送受信を行えるようにし、インターネットや携帯基地局がなくても電波だけで通信できます。山や海、電波の届かない場所からでも AI アシスタントと会話できます。
 
-MeshClaw は、AI ゲートウェイを Meshtastic LoRa メッシュネットワークに Serial（USB）、HTTP（WiFi）、MQTT 経由で接続する OpenClaw チャンネルプラグインです。
+⭐ GitHub で Star を付けていただけると励みになります！
 
 > [!IMPORTANT]
-> このリポジトリは **OpenClaw チャンネルプラグイン**であり、スタンドアロンアプリケーションではありません。ご利用には、稼働中の [OpenClaw](https://github.com/openclaw/openclaw) ゲートウェイ（Node.js 22+）が必要です。
+> これは [OpenClaw](https://github.com/openclaw/openclaw) AI ゲートウェイの **チャンネルプラグイン** です。スタンドアロンアプリではありません。利用には OpenClaw インスタンス（Node.js 22+）が必要です。
 
-[Meshtastic docs][docs] · [Report bug][issues] · [Request feature][issues]
+[ドキュメント][docs] · [ハードウェアガイド](#推奨ハードウェア) · [バグ報告][issues] · [機能リクエスト][issues]
 
 ## 目次
 
-- [前提条件](#前提条件)
-- [クイックスタート](#クイックスタート)
-- [仕組み](#仕組み)
-- [主な機能](#主な機能)
-- [トランスポートモード](#トランスポートモード)
-- [アクセス制御](#アクセス制御)
-- [設定](#設定)
-- [デモ](#デモ)
+- [動作概要](#動作概要)
 - [推奨ハードウェア](#推奨ハードウェア)
+- [機能](#機能)
+- [対応機能とロードマップ](#対応機能とロードマップ)
+- [デモ](#デモ)
+- [クイックスタート](#クイックスタート)
+- [セットアップウィザード](#セットアップウィザード)
+- [設定](#設定)
 - [トラブルシューティング](#トラブルシューティング)
-- [制限事項](#制限事項)
 - [開発](#開発)
 - [コントリビューション](#コントリビューション)
-- [ライセンス](#ライセンス)
 
-## 前提条件
-
-- OpenClaw ゲートウェイのインストールおよび稼働
-- Node.js 22+
-- Meshtastic 接続方法のいずれか:
-  - USB 経由の Serial デバイス、または
-  - LAN 上の HTTP 対応 Meshtastic デバイス、または
-  - MQTT broker へのアクセス（ローカルハードウェア不要）
-
-## クイックスタート
-
-```bash
-# 1) Install plugin from npm
-openclaw plugins install @seeed-studio/meshtastic
-
-# 2) Run guided setup
-openclaw onboard
-
-# 3) Verify channel status
-openclaw channels status --probe
-```
-
-<p align="center">
-  <img src="media/setup-screenshot.png" width="700" alt="OpenClaw setup wizard" />
-</p>
-
-## 仕組み
+## 動作概要
 
 ```mermaid
 flowchart LR
-    subgraph mesh ["LoRa Mesh Network"]
+    subgraph mesh ["📻 LoRa Mesh Network"]
         N["Meshtastic Nodes"]
     end
-    subgraph gw ["OpenClaw Gateway"]
-        P["MeshClaw Plugin"]
+    subgraph gw ["⚙️ OpenClaw Gateway"]
+        P["Meshtastic Plugin"]
         AI["AI Agent"]
     end
     N -- "Serial (USB)" --> P
@@ -86,53 +59,161 @@ flowchart LR
     P <--> AI
 ```
 
-受信メッセージは DM/グループポリシーのチェックを経てから AI Agent に届きます。送信返信はプレーンテキストに変換され、無線送信に適したサイズに分割されます。
+このプラグインは Meshtastic LoRa デバイスと OpenClaw AI Agent を橋渡しします。3 つのトランスポートモードをサポートします。
 
-## 主な機能
+- **Serial** — ローカルの Meshtastic デバイスへの USB 直接接続
+- **HTTP** — WiFi / ローカルネットワーク経由でのデバイス接続
+- **MQTT** — Meshtastic MQTT broker の購読。ローカルハードウェアは不要です
 
-- **3 種類のトランスポート**: Serial、HTTP、MQTT
-- **DM ポリシー制御**: `pairing`、`open`、または `allowlist`
-- **グループポリシー制御**: `disabled`、`open`、または `allowlist`
-- **@mention ゲーティング**: メンションされた場合のみグループで返信（オプション）
-- **マルチアカウント対応**: 複数の独立した Meshtastic 接続を実行可能
-- **回復性のあるトランスポート処理**: 不安定なリンクでの再接続動作
+受信メッセージはアクセス制御（DM ポリシー、グループポリシー、@mention ゲーティング）を経て AI に届きます。送信応答はマークダウン書式を除去（LoRa デバイスはレンダリングできないため）し、無線パケットサイズ制限に収まるよう分割されます。
 
-## トランスポートモード
+## 推奨ハードウェア
 
-| モード | 用途 | 必須項目 |
-|---|---|---|
-| `serial` | USB 接続のローカルノード | `transport`、`serialPort` |
-| `http` | ローカルネットワーク到達可能なノード | `transport`、`httpAddress` |
-| `mqtt` | ローカルハードウェア不要、共有 broker | `transport`、`mqtt.*`、`nodeName` |
+<p align="center">
+  <img src="media/XIAOclaw.png" width="760" alt="Meshtastic device with Seeed XIAO module" />
+</p>
 
-注意:
-- `serial` がデフォルトのトランスポートです。
-- `mqtt` のデフォルト: broker `mqtt.meshtastic.org`、topic `msh/US/2/json/#`。
-- リージョン設定は Serial/HTTP に適用されます。MQTT は topic からリージョンを導出します。
+| デバイス                      | 用途                    | リンク             |
+| ----------------------------- | ----------------------- | ------------------ |
+| XIAO ESP32S3 + Wio-SX1262 kit | 入門開発用              | [購入][hw-xiao]    |
+| Wio Tracker L1 Pro            | ポータブルな現場ゲートウェイ用 | [購入][hw-wio]     |
+| SenseCAP Card Tracker T1000-E | コンパクトなトラッカー  | [購入][hw-sensecap] |
 
-## アクセス制御
+ハードウェアがない場合でも、MQTT トランスポートを使用すれば broker 経由で接続可能です — ローカルデバイスは不要です。
 
-### DM ポリシー (`dmPolicy`)
+Meshtastic 対応デバイスであれば動作します。
 
-| 値 | 動作 |
-|---|---|
-| `pairing`（デフォルト） | 新規ユーザーは DM チャット開始前に承認が必要 |
-| `open` | 任意のノードが DM 可能 |
-| `allowlist` | `allowFrom` に含まれる ID のみ DM 可能 |
+## 機能
 
-### グループポリシー (`groupPolicy`)
+- **AI Agent との統合** — OpenClaw AI Agent と Meshtastic LoRa メッシュネットワークを橋渡しします。クラウド依存なしでのインテリジェント通信を実現します。
 
-| 値 | 動作 |
-|---|---|
-| `disabled`（デフォルト） | グループチャンネルを無視 |
-| `open` | すべてのグループチャンネルで応答 |
-| `allowlist` | 設定済みチャンネルのみで応答 |
+- **3 つのトランスポートモード** — Serial（USB）、HTTP（WiFi）、MQTT をサポート
 
-チャンネルごとにメンションを必須にすることも可能（`requireMention`）で、明示的にタグ付けされた場合のみボットが返信します。
+- **DM とグループチャンネルのアクセス制御** — DM 許可リスト、チャンネル応答ルール、@mention ゲーティングを備えた両方の会話モードをサポート
+
+- **マルチアカウント対応** — 複数の独立した接続を同時に実行可能
+
+- **耐障害性のあるメッシュ通信** — 設定可能な再試行による自動再接続。接続断を適切に処理します。
+
+## 対応機能とロードマップ
+
+このプラグインは Meshtastic を Telegram や Discord と同様の第一級のチャンネルとして扱い、インターネット依存なしで LoRa 無線を介した AI 会話やスキル呼び出しを可能にします。
+
+| オフライン情報クエリ                                          | クロスチャンネルブリッジ：オフグリッドから送信、どこでも受信 | 🔜 今後の予定：                                               |
+| ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| <img src="media/image1.png" alt="Query Information Offline" /> | <img src="media/image2.png" alt="Cross-Channel Bridge" />    | リアルタイムのノードデータ（GPS 位置情報、環境センサー、デバイス状態）を OpenClaw のコンテキストに取り込み、AI がメッシュネットワークの健全性を監視し、ユーザーのクエリを待たずに能動的にアラートを発信できるようにする予定です。 |
+
+## デモ
+
+<div align="center">
+
+https://github.com/user-attachments/assets/837062d9-a5bb-4e0a-b7cf-298e4bdf2f7c
+
+</div>
+
+フォールバック: [media/demo.mp4](media/demo.mp4)
+
+## クイックスタート
+
+```bash
+# 1. プラグインのインストール
+openclaw plugins install @seeed-studio/meshtastic
+
+# 2. ガイド付きセットアップ — トランスポート、リージョン、アクセスポリシーを順に設定
+openclaw onboard
+
+# 3. 動作確認
+openclaw channels status --probe
+```
+
+<p align="center">
+  <img src="media/setup-screenshot.png" width="700" alt="OpenClaw setup wizard" />
+</p>
+
+## セットアップウィザード
+
+`openclaw onboard` を実行すると、対話式ウィザードが起動し、各設定ステップを順に案内します。以下は各ステップの意味と選択方法です。
+
+### 1. トランスポート
+
+ゲートウェイが Meshtastic メッシュに接続する方法です：
+
+| オプション            | 説明                                                  | 必要なもの                                         |
+| ----------------- | ------------------------------------------------------------ | ------------------------------------------------ |
+| **Serial** (USB)  | ローカルデバイスへの USB 直接接続。利用可能なポートを自動検出します。 | USB 接続された Meshtastic デバイス             |
+| **HTTP** (WiFi)   | ローカルネットワーク経由でのデバイス接続。                 | デバイスの IP アドレスまたはホスト名（例：`meshtastic.local`）  |
+| **MQTT** (broker) | MQTT broker 経由でメッシュに接続 — ローカルハードウェアは不要です。 | Broker アドレス、認証情報、および購読トピック |
+
+### 2. LoRa リージョン
+
+> Serial と HTTP のみ。MQTT は購読トピックからリージョンを導出します。
+
+デバイスの無線周波数リージョンを設定します。現地の規制およびメッシュ内の他のノードと一致させる必要があります。一般的な選択肢：
+
+| リージョン   | 周波数           |
+| -------- | ------------------- |
+| `US`     | 902–928 MHz         |
+| `EU_868` | 869 MHz             |
+| `CN`     | 470–510 MHz         |
+| `JP`     | 920 MHz             |
+| `UNSET`  | デバイスのデフォルトを維持 |
+
+完全なリストは [Meshtastic リージョンのドキュメント](https://meshtastic.org/docs/getting-started/initial-config/#lora) を参照してください。
+
+### 3. ノード名
+
+メッシュ上でのデバイスの表示名です。また、グループチャンネルでの **@mention トリガー** としても機能します — 他のユーザーは `@OpenClaw` を送信してボットと会話します。
+
+- **Serial / HTTP**: オプション — 空欄の場合、接続されたデバイスから自動検出します。
+- **MQTT**: 必須 — 物理デバイスがないため名前を読み取れません。
+
+### 4. チャンネルアクセス (`groupPolicy`)
+
+**メッシュグループチャンネル**（例：LongFast、Emergency）でボットが応答するかどうか、およびその方法を制御します：
+
+| ポリシー               | 動作                                                     |
+| -------------------- | ------------------------------------------------------------ |
+| `disabled` (デフォルト) | すべてのグループチャンネルメッセージを無視します。DM のみ処理します。  |
+| `open`               | メッシュ上の **すべて** のチャンネルで応答します。                   |
+| `allowlist`          | **リストに含まれる** チャンネルのみで応答します。チャンネル名を入力するように求められます（カンマ区切り、例：`LongFast, Emergency`）。`*` をワイルドカードとして使用してすべてにマッチさせることもできます。 |
+
+### 5. @mention の要求
+
+> チャンネルアクセスが有効な場合（`disabled` 以外）にのみ表示されます。
+
+有効にすると（デフォルト：**はい**）、ボットは自分のノード名がメンションされた場合（例：`@OpenClaw 天気はどう？`）にのみグループチャンネルで応答します。これにより、ボットがチャンネルのすべてのメッセージに返信するのを防ぎます。
+
+無効にすると、ボットは許可されたチャンネルの **すべて** のメッセージに応答します。
+
+### 6. DM アクセスポリシー (`dmPolicy`)
+
+**ダイレクトメッセージ**をボットに送信できるユーザーを制御します：
+
+| ポリシー              | 動作                                                     |
+| ------------------- | ------------------------------------------------------------ |
+| `pairing` (デフォルト) | 新規送信者はペアリングリクエストをトリガーし、チャットする前に承認が必要です。 |
+| `open`              | メッシュ上の誰でも自由に DM を送信できます。                    |
+| `allowlist`         | `allowFrom` にリストされたノードのみが DM を送信できます。それ以外は無視されます。 |
+
+### 7. DM 許可リスト (`allowFrom`)
+
+> `dmPolicy` が `allowlist` の場合、またはウィザードが必要と判断した場合にのみ表示されます。
+
+ダイレクトメッセージを送信できる Meshtastic ユーザー ID のリストです。形式：`!aabbccdd`（16 進数のユーザー ID）。複数のエントリはカンマ区切りです。
+
+<p align="center">
+  <img src="media/image3.jpg" width="400" />
+</p>
+
+### 8. アカウントの表示名
+
+> マルチアカウント設定の場合にのみ表示されます。オプションです。
+
+アカウントに人間が読める表示名を割り当てます。例えば、ID が `home` のアカウントを「Home Station」と表示できます。スキップした場合は生のアカウント ID がそのまま使用されます。これは純粋に表示上のものであり、機能に影響はありません。
 
 ## 設定
 
-ガイド付きセットアップには `openclaw onboard`、または手動で設定を編集するには `openclaw config edit` を使用してください。
+ガイド付きセットアップ（`openclaw onboard`）で以下すべてをカバーします。手順については [セットアップウィザード](#セットアップウィザード) を参照してください。手動で設定する場合は、`openclaw config edit` で編集してください。
 
 ### Serial (USB)
 
@@ -154,7 +235,7 @@ channels:
     nodeName: OpenClaw
 ```
 
-### MQTT (Broker)
+### MQTT (broker)
 
 ```yaml
 channels:
@@ -185,87 +266,56 @@ channels:
 ```
 
 <details>
-<summary><b>設定リファレンス</b></summary>
+<summary><b>すべてのオプションリファレンス</b></summary>
 
-| キー | タイプ | デフォルト | 備考 |
-|---|---|---|---|
-| `transport` | `serial \| http \| mqtt` | `serial` | ベースとなるトランスポート |
-| `serialPort` | `string` | - | `serial` に必須 |
-| `httpAddress` | `string` | `meshtastic.local` | `http` に必須 |
-| `httpTls` | `boolean` | `false` | HTTP TLS |
-| `mqtt.broker` | `string` | `mqtt.meshtastic.org` | MQTT broker ホスト |
-| `mqtt.port` | `number` | `1883` | MQTT ポート |
-| `mqtt.username` | `string` | `meshdev` | MQTT ユーザー名 |
-| `mqtt.password` | `string` | `large4cats` | MQTT パスワード |
-| `mqtt.topic` | `string` | `msh/US/2/json/#` | 購読トピック |
-| `mqtt.publishTopic` | `string` | 自動導出 | オプションによる上書き |
-| `mqtt.tls` | `boolean` | `false` | MQTT TLS |
-| `region` | enum | `UNSET` | Serial/HTTP のみ |
-| `nodeName` | `string` | 自動検出 | MQTT に必須 |
-| `dmPolicy` | `open \| pairing \| allowlist` | `pairing` | DM アクセスポリシー |
-| `allowFrom` | `string[]` | - | DM 許可リスト（例: `!aabbccdd`） |
-| `groupPolicy` | `open \| allowlist \| disabled` | `disabled` | グループチャンネルポリシー |
-| `channels` | `Record<string, object>` | - | チャンネルごとの上書き設定 |
-| `textChunkLimit` | `number` | `200` | 許可範囲: `50-500` |
+| キー                 | 型                            | デフォルト               | 備考                                                        |
+| ------------------- | ------------------------------- | --------------------- | ------------------------------------------------------------ |
+| `transport`         | `serial \| http \| mqtt`        | `serial`              |                                                              |
+| `serialPort`        | `string`                        | —                     | Serial で必須                                          |
+| `httpAddress`       | `string`                        | `meshtastic.local`    | HTTP で必須                                            |
+| `httpTls`           | `boolean`                       | `false`               |                                                              |
+| `mqtt.broker`       | `string`                        | `mqtt.meshtastic.org` |                                                              |
+| `mqtt.port`         | `number`                        | `1883`                |                                                              |
+| `mqtt.username`     | `string`                        | `meshdev`             |                                                              |
+| `mqtt.password`     | `string`                        | `large4cats`          |                                                              |
+| `mqtt.topic`        | `string`                        | `msh/US/2/json/#`     | 購読トピック                                              |
+| `mqtt.publishTopic` | `string`                        | derived               |                                                              |
+| `mqtt.tls`          | `boolean`                       | `false`               |                                                              |
+| `region`            | enum                            | `UNSET`               | `US`, `EU_868`, `CN`, `JP`, `ANZ`, `KR`, `TW`, `RU`, `IN`, `NZ_865`, `TH`, `EU_433`, `UA_433`, `UA_868`, `MY_433`, `MY_919`, `SG_923`, `LORA_24`。Serial/HTTP のみ。 |
+| `nodeName`          | `string`                        | auto-detect           | 表示名および @mention トリガー。MQTT では必須。        |
+| `dmPolicy`          | `open \| pairing \| allowlist`  | `pairing`             | DM を送信できるユーザー。[DM アクセスポリシー](#6-dm-アクセスポリシー-dmpolicy) を参照。 |
+| `allowFrom`         | `string[]`                      | —                     | DM 許可リストのノード ID、例：`["!aabbccdd"]`              |
+| `groupPolicy`       | `open \| allowlist \| disabled` | `disabled`            | グループチャンネルの応答ポリシー。[チャンネルアクセス](#4-チャンネルアクセス-grouppolicy) を参照。 |
+| `channels`          | `Record<string, object>`        | —                     | チャンネルごとの上書き設定：`requireMention`, `allowFrom`, `tools` |
 
 </details>
 
 <details>
 <summary><b>環境変数による上書き</b></summary>
 
-以下の変数はデフォルトアカウントの各項目を上書きします:
+これらはデフォルトアカウントの設定を上書きします（YAML は名前付きアカウントで優先されます）：
 
-| 変数 | 設定キー |
-|---|---|
-| `MESHTASTIC_TRANSPORT` | `transport` |
-| `MESHTASTIC_SERIAL_PORT` | `serialPort` |
-| `MESHTASTIC_HTTP_ADDRESS` | `httpAddress` |
-| `MESHTASTIC_MQTT_BROKER` | `mqtt.broker` |
-| `MESHTASTIC_MQTT_TOPIC` | `mqtt.topic` |
+| 変数                  | 対応する設定キー |
+| ------------------------- | --------------------- |
+| `MESHTASTIC_TRANSPORT`    | `transport`           |
+| `MESHTASTIC_SERIAL_PORT`  | `serialPort`          |
+| `MESHTASTIC_HTTP_ADDRESS` | `httpAddress`         |
+| `MESHTASTIC_MQTT_BROKER`  | `mqtt.broker`         |
+| `MESHTASTIC_MQTT_TOPIC`   | `mqtt.topic`          |
 
 </details>
 
-## デモ
-
-<div align="center">
-
-https://github.com/user-attachments/assets/837062d9-a5bb-4e0a-b7cf-298e4bdf2f7c
-
-</div>
-
-フォールバック: [media/demo.mp4](media/demo.mp4)
-
-## 推奨ハードウェア
-
-<p align="center">
-  <img src="media/XIAOclaw.png" width="760" alt="Meshtastic device with Seeed XIAO module" />
-</p>
-
-| デバイス | 用途 | リンク |
-|---|---|---|
-| XIAO ESP32S3 + Wio-SX1262 キット | 入門用開発 | [購入][hw-xiao] |
-| Wio Tracker L1 Pro | 持ち運び可能なフィールドゲートウェイ | [購入][hw-wio] |
-| SenseCAP Card Tracker T1000-E | コンパクトなトラッカー | [購入][hw-sensecap] |
-
-Meshtastic 対応デバイスであればどれでも動作します。MQTT モードはローカルハードウェアなしで実行可能です。
-
 ## トラブルシューティング
 
-| 症状 | 確認項目 |
-|---|---|
-| Serial が接続できない | `serialPort` は正しいですか？ホストにデバイス権限はありますか？ |
-| HTTP が接続できない | `httpAddress` に到達可能ですか？`httpTls` は正しく設定されていますか？ |
-| MQTT でメッセージを受信しない | topic のリージョンは正しいですか？broker の認証情報は有効ですか？ |
-| DM 返信がない | `dmPolicy` と `allowFrom` を確認 |
-| グループ返信がない | `groupPolicy`、許可リスト、メンション要件を確認 |
+| 症状               | 確認項目                                                        |
+| --------------------- | ------------------------------------------------------------ |
+| Serial が接続できない  | デバイスパスは正しいですか？ホストに権限がありますか？                    |
+| HTTP が接続できない    | `httpAddress` に到達可能ですか？`httpTls` はデバイスと一致していますか？           |
+| MQTT で何も受信できない | `mqtt.topic` のリージョンは正しいですか？Broker の認証情報は有効ですか？    |
+| DM の応答がない       | `dmPolicy` と `allowFrom` は設定されていますか？[DM アクセスポリシー](#6-dm-アクセスポリシー-dmpolicy) を参照してください。 |
+| グループ返信がない      | `groupPolicy` は有効ですか？チャンネルは許可リストに含まれていますか？@mention は必要ですか？[チャンネルアクセス](#4-チャンネルアクセス-grouppolicy) を参照してください。 |
 
-issue を作成する際は、トランスポート種別・設定（秘密情報は除く）、および `openclaw channels status --probe` の出力を添えてください。
-
-## 制限事項
-
-- LoRa メッセージは帯域制限があります。返信は分割されます（`textChunkLimit`、デフォルト `200`）。
-- リッチなマークダウンは無線デバイスへ送信前に除去されます。
-- メッシュ品質、範囲、レイテンシは無線環境およびネットワーク条件に依存します。
+バグを発見しましたか？[issue を作成][issues] する際は、トランスポート種別、設定（秘密情報は除く）、および `openclaw channels status --probe` の出力を添えてください。
 
 ## 開発
 
@@ -274,20 +324,14 @@ git clone https://github.com/Seeed-Solution/openclaw-meshtastic.git
 cd openclaw-meshtastic
 npm install
 openclaw plugins install -l ./openclaw-meshtastic
-openclaw channels status --probe
 ```
 
-ビルドステップは不要です。OpenClaw は `index.ts` から TypeScript ソースを直接読み込みます。
+ビルドステップはありません — OpenClaw は TypeScript ソースを直接読み込みます。`openclaw channels status --probe` で確認してください。
 
 ## コントリビューション
 
-- 機能要望やバグ報告は [GitHub Issues][issues] よりお願いします
-- Pull Request を歓迎します
-- 既存の TypeScript 規約に準拠した変更をお願いします
-
-## ライセンス
-
-MIT
+- バグ報告や機能リクエストは [issue を作成][issues] してください
+- Pull Request を歓迎します — 既存の TypeScript 規約に沿ったコードを維持してください
 
 <!-- Reference-style links -->
 [docs]: https://meshtastic.org/docs/
