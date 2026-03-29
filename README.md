@@ -22,7 +22,6 @@
   </a>
 </p>
 <!-- LANG_SWITCHER_START -->
-
 <p align="center">
   <b>English</b> | <a href="README.zh-CN.md">中文</a> | <a href="README.ja.md">日本語</a> | <a href="README.fr.md">Français</a> | <a href="README.pt.md">Português</a> | <a href="README.es.md">Español</a>
 </p>
