@@ -120,10 +120,19 @@ function setGroupAccess(
   policy: "open" | "allowlist" | "disabled",
   entries: string[],
 ): CoreConfig {
-  if (policy !== "allowlist") {
+  if (policy === "open") {
+    const existing = resolveMeshtasticAccount({ cfg, accountId }).config.channels ?? {};
+    const hasWildcard = Object.keys(existing).includes("*");
     return updateMeshtasticAccountConfig(cfg, accountId, {
       enabled: true,
-      groupPolicy: policy,
+      groupPolicy: "open",
+      channels: hasWildcard ? existing : { ...existing, "*": {} },
+    });
+  }
+  if (policy === "disabled") {
+    return updateMeshtasticAccountConfig(cfg, accountId, {
+      enabled: true,
+      groupPolicy: "disabled",
     });
   }
   const channels = Object.fromEntries(
@@ -315,7 +324,7 @@ const dmPolicy: ChannelSetupDmPolicy = {
     const raw = await prompter.text({
       message: "Meshtastic allowFrom (node IDs)",
       placeholder: "!aabbccdd, !11223344",
-      initialValue: existing[0] ? String(existing[0]) : undefined,
+      initialValue: existing.length ? existing.join(", ") : undefined,
       validate: (v) => (String(v ?? "").trim() ? undefined : "Required"),
     });
     const normalized = [
@@ -442,6 +451,8 @@ export const meshtasticSetupWizard: ChannelSetupWizard = {
       const region = String(regionChoice) as MeshtasticRegion;
       if (region !== "UNSET") {
         next = updateMeshtasticAccountConfig(next, accountId, { region });
+      } else {
+        next = updateMeshtasticAccountConfig(next, accountId, { region: undefined });
       }
     }
 
@@ -462,6 +473,8 @@ export const meshtasticSetupWizard: ChannelSetupWizard = {
     ).trim();
     if (nodeNameInput) {
       next = updateMeshtasticAccountConfig(next, accountId, { nodeName: nodeNameInput });
+    } else if (!isMqtt) {
+      next = updateMeshtasticAccountConfig(next, accountId, { nodeName: undefined });
     }
 
     // ── Channel access config ──
@@ -500,7 +513,7 @@ export const meshtasticSetupWizard: ChannelSetupWizard = {
       const raw = await prompter.text({
         message: "Meshtastic allowFrom (node IDs)",
         placeholder: "!aabbccdd, !11223344",
-        initialValue: existing[0] ? String(existing[0]) : undefined,
+        initialValue: existing.length ? existing.join(", ") : undefined,
         validate: (v) => (String(v ?? "").trim() ? undefined : "Required"),
       });
       const normalized = [

@@ -77,6 +77,8 @@ Les messages entrants passent par un contrôle d’accès (politique de DM, poli
 | Wio Tracker L1 Pro            | Passerelle de terrain portable  | [Acheter][hw-wio]   |
 | SenseCAP Card Tracker T1000-E | Traceur compact            | [Acheter][hw-sensecap] |
 
+> **Hôte de passerelle : [reComputer R1024][hw-r1024]** — Pas besoin d'un Mac Mini. Le reComputer R1024 (~189 $, ~5 W) est un ordinateur edge industriel sans ventilateur qui fait tourner OpenClaw 24h/24, 7j/7. Alimenté par PoE, montable sur rail DIN, avec double Ethernet et modules optionnels LoRa/4G — idéal comme passerelle permanente sur le terrain. [Guide de démarrage →][wiki-openclaw-recomputer]
+
 Pas de matériel ? Le transport MQTT se connecte via un broker — aucun appareil local requis.
 
 Tout appareil compatible Meshtastic fonctionne.
@@ -348,3 +350,5 @@ Pas d’étape de build — OpenClaw charge directement le code source TypeScrip
 [hw-xiao]: https://www.seeedstudio.com/Wio-SX1262-with-XIAO-ESP32S3-p-5982.html
 [hw-wio]: https://www.seeedstudio.com/Wio-Tracker-L1-Pro-p-6454.html
 [hw-sensecap]: https://www.seeedstudio.com/SenseCAP-Card-Tracker-T1000-E-for-Meshtastic-p-5913.html
+[hw-r1024]: https://www.seeedstudio.com/reComputer-R1024-10-p-5923.html
+[wiki-openclaw-recomputer]: https://wiki.seeedstudio.com/getting_started_with_openclaw_on_recomputer/

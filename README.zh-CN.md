@@ -75,6 +75,8 @@ flowchart LR
 | Wio Tracker L1 Pro           | 便携式现场网关         | [购买][hw-wio]     |
 | SenseCAP Card Tracker T1000-E | 小型追踪器             | [购买][hw-sensecap] |
 
+> **网关主机：[reComputer R1024][hw-r1024]** — 不需要 Mac Mini。reComputer R1024（约 $189，约 5 W）是一台无风扇工业级边缘计算机，可全天候运行 OpenClaw。支持 PoE 供电、DIN 导轨安装，配备双 Ethernet 接口及可选 LoRa/4G 模块——非常适合作为现场常驻网关。[入门指南 →][wiki-openclaw-recomputer]
+
 没有硬件？可使用 MQTT 传输通过代理连接——无需本地设备。
 
 任何兼容 Meshtastic 的设备都可以使用。
@@ -335,3 +337,5 @@ openclaw plugins install -l ./MeshClaw
 [hw-xiao]: https://www.seeedstudio.com/Wio-SX1262-with-XIAO-ESP32S3-p-5982.html
 [hw-wio]: https://www.seeedstudio.com/Wio-Tracker-L1-Pro-p-6454.html
 [hw-sensecap]: https://www.seeedstudio.com/SenseCAP-Card-Tracker-T1000-E-for-Meshtastic-p-5913.html
+[hw-r1024]: https://www.seeedstudio.com/reComputer-R1024-10-p-5923.html
+[wiki-openclaw-recomputer]: https://wiki.seeedstudio.com/getting_started_with_openclaw_on_recomputer/
