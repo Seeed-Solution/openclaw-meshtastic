@@ -135,6 +135,8 @@ Fallback: [media/demo.mp4](media/demo.mp4)
 | Wio Tracker L1 Pro            | ポータブルなフィールドゲートウェイ | [購入][hw-wio]    |
 | SenseCAP Card Tracker T1000-E | コンパクトなトラッカー             | [購入][hw-sensecap] |
 
+> **ゲートウェイホスト: [reComputer R1024][hw-r1024]** — Mac Mini は不要です。reComputer R1024（約 $189、約 5 W）はファンレスの産業グレードエッジコンピュータで、OpenClaw を 24 時間 365 日稼働できます。PoE 給電、DIN レール取り付け対応、デュアル Ethernet と オプションの LoRa/4G モジュールを搭載 — フィールドで常時稼働するゲートウェイに最適です。[はじめかたガイド →][wiki-openclaw-recomputer]
+
 > 任意: 完全オフラインの AI スタック — クラウド依存をゼロにしたい場合は、[reComputer J series][hw-recomputer] でローカル LLM（Ollama、llama.cpp など）を動かしてください。無線、ゲートウェイ、推論まで、すべてが自前のハードウェア上で完結します。API キーは不要で、データはネットワーク外に出ません。
 
 ハードウェアがなくても大丈夫です。MQTT トランスポートなら broker 経由で接続でき、ローカルデバイスは不要です。
@@ -364,3 +366,5 @@ MeshClaw が役立ったと感じたら、スター ⭐ をお願いします。
 [hw-wio]: https://www.seeedstudio.com/Wio-Tracker-L1-Pro-p-6454.html
 [hw-sensecap]: https://www.seeedstudio.com/SenseCAP-Card-Tracker-T1000-E-for-Meshtastic-p-5913.html
 [hw-recomputer]: https://www.seeedstudio.com/reComputer-J4012-p-5586.html
+[hw-r1024]: https://www.seeedstudio.com/reComputer-R1024-10-p-5923.html
+[wiki-openclaw-recomputer]: https://wiki.seeedstudio.com/getting_started_with_openclaw_on_recomputer/

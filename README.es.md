@@ -135,6 +135,8 @@ Alternativa: [media/demo.mp4](media/demo.mp4)
 | Wio Tracker L1 Pro            | Gateway de campo portátil          | [Comprar][hw-wio]      |
 | SenseCAP Card Tracker T1000-E | Rastreador compacto                | [Comprar][hw-sensecap] |
 
+> **Host de gateway: [reComputer R1024][hw-r1024]** — No necesitas un Mac Mini. El reComputer R1024 (~$189, ~5 W) es un ordenador edge industrial sin ventilador que ejecuta OpenClaw 24/7. Alimentado por PoE, montable en riel DIN, con doble Ethernet y módulos opcionales LoRa/4G — ideal como gateway siempre encendido en el campo. [Guía de inicio →][wiki-openclaw-recomputer]
+
 > Opcional: pila de IA totalmente offline — ¿Quieres cero dependencia de la nube? Añade un [reComputer serie J][hw-recomputer] ejecutando un LLM local (via Ollama, llama.cpp, etc.) y toda la cadena — radio, gateway e inferencia — queda en tu propio hardware. Sin API keys, ningún dato sale de tu red.
 
 ¿Sin hardware? El transporte MQTT conecta vía broker — no necesitas un dispositivo local.
@@ -364,3 +366,5 @@ Si MeshClaw te resulta útil, déjanos una estrella ⭐ — ¡ayuda a que más g
 [hw-wio]: https://www.seeedstudio.com/Wio-Tracker-L1-Pro-p-6454.html
 [hw-sensecap]: https://www.seeedstudio.com/SenseCAP-Card-Tracker-T1000-E-for-Meshtastic-p-5913.html
 [hw-recomputer]: https://www.seeedstudio.com/reComputer-J4012-p-5586.html
+[hw-r1024]: https://www.seeedstudio.com/reComputer-R1024-10-p-5923.html
+[wiki-openclaw-recomputer]: https://wiki.seeedstudio.com/getting_started_with_openclaw_on_recomputer/
